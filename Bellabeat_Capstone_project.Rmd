@@ -1,0 +1,341 @@
+---
+title: "Capstone Project"
+author: "Salay"
+date: '2022-06-06'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction
+
+This is the Case Study Project (Capstone Project) which is the last part of the [Google Data Analytics Professional Certificate](https://www.coursera.org/professional-certificates/google-data-analytics)
+
+
+**The key business task is to reveal opportunities for growth in the smart heath device market.**
+
+The data analyzed if from Kaggle, [FitBit Fitness Tracker Data](https://www.kaggle.com/datasets/arashnic/fitbit).
+
+
+# Data Processing  
+
+This section will go through the necessary data processing on FitBit datasets.    
+  
+First of we will load the necessary libraries.  
+```{r}
+library(tidyverse)
+library(lubridate)
+
+```
+
+
+Now, let us load the data sets that we are going to use.
+
+```{r}
+daily_calories <- read.csv("dailyCalories_merged.csv")
+daily_sleep <- read.csv("sleepDay_merged.csv")
+daily_activity <- read.csv("dailyActivity_merged.csv")
+
+```
+### We will start with the "daily_calories" data frame.
+
+```{r}
+glimpse(daily_calories)
+
+```
+Checking columns types and changing to appropriate ones where necessary.
+
+```{r}
+daily_calories$ActivityDay <- mdy(daily_calories$ActivityDay)
+
+#Check if character type changed to appropriate
+typeof(daily_calories$ActivityDay)
+
+```
+Checking for duplicates
+
+```{r}
+daily_calories <- daily_calories %>% 
+  distinct()
+
+```
+Data processing for this data frame is complete
+```{r}
+glimpse(daily_calories)
+```
+
+### Now the second "daily_sleep" data frame.
+
+```{r}
+glimpse(daily_sleep)
+```
+Checking columns types and changing to appropriate ones where necessary.
+
+```{r}
+daily_sleep$SleepDay <- mdy_hms(daily_sleep$SleepDay)
+
+#Check if character type changed to appropriate
+typeof(daily_sleep$SleepDay)
+
+```
+Checking for duplicates
+
+```{r}
+daily_sleep <- daily_sleep %>%
+  distinct()
+
+```
+Data processing for this data frame is complete
+```{r}
+glimpse(daily_sleep)
+```
+### Now the third "daily_steps" data frame.
+
+```{r}
+glimpse(daily_activity)
+```
+
+For my analysis, I only requires the data related to users' steps.
+```{r}
+daily_steps <- daily_activity %>%
+  select(Id,ActivityDate,TotalSteps)
+
+```
+
+
+Checking columns types and changing to appropriate ones where necessary.
+
+```{r}
+daily_steps$ActivityDate <- mdy(daily_steps$ActivityDate)
+
+#Check if character type changed to appropriate
+typeof(daily_steps$ActivityDate)
+
+```
+Checking for duplicates
+
+```{r}
+daily_steps <- daily_steps %>%
+  distinct()
+
+```
+Data processing for this data frame is complete
+```{r}
+glimpse(daily_steps)
+```
+
+# Data Analysis and Visualization
+
+
+## Analysis of users daily calorie expenditure
+
+Basic descriptive statistics on the data by each user to see data consistency
+```{r}
+cal_expenditure_info <- daily_calories %>%
+  group_by(Id) %>% drop_na() %>%
+  summarise(mean = mean(Calories), stdev = sd(Calories),
+            coef_var = sd(Calories)/mean(Calories))
+head(cal_expenditure_info)
+```
+Plotting each users; calorie expenditure over time
+```{r}
+daily_calories %>%
+  drop_na(Calories) %>%
+  ggplot(aes(x=ActivityDay,y=Calories,group=1)) +
+  geom_line()+
+  facet_wrap(vars(Id))+
+  labs(title = "Calorie Burn by User Over Time")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+## Analysis of users' sleep insufficiency
+
+Finding the mean sleep time of each user
+```{r}
+daily_sleep_summary <- daily_sleep %>% 
+  group_by(Id) %>% 
+  summarise(mean = mean(TotalMinutesAsleep))
+
+glimpse(daily_sleep_summary)
+
+```
+
+Checking if there zero values in the result.
+```{r}
+all(daily_sleep_summary$mean == 0)
+```
+
+For the purposes of the analysis, removed mean sleeping hour less than 4.Since
+probably this was due to incorrect logging of sleep data.
+
+```{r}
+daily_sleep_summary <-  subset(daily_sleep_summary, mean >= 240)
+
+```
+
+Defining necessary variables
+```{r}
+#Finding the remaining users
+users <- n_distinct(daily_sleep_summary$Id)
+
+#The recommended 8 hour sleep by experts
+sleep_min <- 480
+
+```
+
+Plotting the users mean sleeping hours to see if they are getting enough sleep.
+```{r}
+daily_sleep_summary %>%
+  ggplot(aes(x=1:users, y=mean)) +
+  geom_area()+
+  scale_y_continuous(n.breaks = 10, expand = c(0, 0), limits = c(0, NA))+
+  scale_x_continuous(n.breaks = 21,expand = c(0, 0), limits = c(1, NA))+
+  geom_text(aes(users -3, sleep_min, label = "Recommended 480", vjust = -0.5))+
+  geom_hline(yintercept = sleep_min, color = "red", size = 2) +
+  labs(title = "Mean Sleep time by user",y = "Sleep time (minutes)",x = "User")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+## Analysis of users' activeness
+
+Finding total sum of steps taken by each users
+```{r}
+steps_sum_user <- daily_steps %>% 
+  group_by(Id) %>% 
+  summarise(sum_of_steps = sum(TotalSteps))
+```
+
+Checking if there any users who have zero total steps
+```{r}
+all(steps_sum_user$sum_of_steps == 0)
+```
+
+Finding most and least 5 users with total sum of steps
+
+```{r}
+#finding 5 with the most amount of steps
+most_active_users <- head(arrange(steps_sum_user, -sum_of_steps),5) %>%
+  select(Id)
+
+#finding 5 with the least amount of steps
+least_active_users <- head(arrange(steps_sum_user, sum_of_steps),5) %>%
+  select(Id)
+
+```
+
+Creating a data frame to analyze the top 5 and bottom 5 users by activeness
+
+```{r}
+
+daily_steps_mostactive <-inner_join(daily_steps,most_active_users, by ="Id")
+daily_steps_leastactive <-inner_join(daily_steps,least_active_users, by ="Id")
+
+
+```
+
+Classification of the sum of steps by activeness
+
+```{r}
+activity_classfication_most_active <- daily_steps_mostactive %>% 
+  group_by(Id) %>% 
+  summarise("sedentary" = sum(TotalSteps<5000),
+            "low_active" = sum(TotalSteps>=5000 & TotalSteps<7500),
+            "active" = sum(TotalSteps>=7500 & TotalSteps<10000),
+            "very_active" = sum(TotalSteps>=10000))
+
+activity_classfication_least_active <- daily_steps_leastactive %>% 
+  group_by(Id) %>% 
+  summarise("sedentary" = sum(TotalSteps<5000),
+            "low_active" = sum(TotalSteps>=5000 & TotalSteps<7500),
+            "active" = sum(TotalSteps>=7500 & TotalSteps<10000),
+            "very_active" = sum(TotalSteps>=10000))
+
+head(activity_classfication_least_active)
+head(activity_classfication_most_active)
+```
+
+Finding the mean of the top 5 and bottom for activeness classifcation
+```{r}
+#converting Id to string to avoid calculation
+activity_classfication_most_active$Id<-
+  as.character(activity_classfication_most_active$Id)
+activity_classfication_least_active$Id <- as.character(activity_classfication_least_active$Id)
+
+```
+
+```{r}
+#finding average of least active by class
+least_active <- colMeans(activity_classfication_least_active[
+  sapply(activity_classfication_least_active,is.numeric)])
+
+activeness_summary <- data.frame(least_active)
+```
+
+
+```{r}
+#finding average of most active by class
+most_active <- 
+  colMeans(activity_classfication_most_active[sapply(activity_classfication_most_active, is.numeric)])
+
+#adding the result to the data frame
+activeness_summary$most_active <- most_active
+
+activeness_summary <- activeness_summary[!(row.names(activeness_summary) %in% "Id"),]
+
+```
+Let us look at the end result of this.
+
+```{r}
+head(activeness_summary)
+```
+
+Visualizing the activeness for most and least active based on the classification
+
+```{r}
+activeness_summary %>%
+  rownames_to_column("ID") %>%
+  pivot_longer(!ID) %>%
+  ggplot(aes(x= fct_inorder(ID), y = value, fill = name))+
+           geom_bar(position="fill", stat="identity")+
+  labs(title = "Most Active vs Least Active Users by Activity Class",y = "Total",x = "Activineness")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+Plot to see if there is any change in activeness over time in both categories
+
+Summarizing the most and least active users over time
+
+```{r}
+leastactive_summary <- daily_steps_leastactive %>%
+  group_by(ActivityDate) %>%
+  summarise(mean_leastactive = mean(TotalSteps))
+  
+mostactive_summary <- daily_steps_mostactive %>%
+  group_by(ActivityDate) %>%
+  summarise(mean_mostactive = mean(TotalSteps))
+
+activeness_overtime <- inner_join(leastactive_summary,mostactive_summary, by = "ActivityDate")
+
+glimpse(activeness_overtime)
+
+```
+
+Visualization
+
+```{r}
+activeness_overtime %>%
+  ggplot(aes(x=ActivityDate))+
+  geom_line(aes(y = mean_mostactive, color = "Most Active"))+
+  geom_line(aes(y = mean_leastactive, color="Least Active"), linetype="twodash")+
+  scale_color_manual(values = c("Most Active" = "darkred", 
+                                "Least Active" = "steelblue"))+
+  labs(title = "Users' Activeness Steps Over Time",y = "Steps",x = "Date")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
